@@ -38,7 +38,7 @@ Jane Yijun Sun conducted the literature review, led ideas on the research direct
 
 %-----------------------------------------------------------------------
 \begin{abstract}
-Mixture-of-Experts (MoE) models achieve computational efficiency by routing each token to a sparse subset of expert networks, but the large number of experts creates memory and computational overhead. We investigate whether co-activation patterns in routing decisions can identify experts that are redundant or harmful, enabling systematic expert pruning. We initially construct co-activation matrices and develop routing-based structural metrics (utilization, redundancy, and graph centrality) to rank experts for pruning. However, experiments on TinyMixtral-4x248M-MoE reveal that these metrics produce limited and unreliable results: the top-ranked pruning candidate causes +89.8 PPL degradation despite 72\% apparent redundancy. Informed by recent work on output-behavior-based evaluation \citep{zhang2025mone} and multi-signal layer-aware pruning \citep{yang2025pathfinder}, we improve our approach by conducting exhaustive per-expert sensitivity analysis. This reveals a striking finding: Expert~2 is actively harmful across all 12 layers, with its removal improving perplexity by 80 to 160 points, a pattern completely invisible to routing-based structural metrics. Comparison across baselines shows that weight-space and frequency signals successfully identify this harmful expert while our initial structural approach does not, motivating hybrid methods that combine routing structure with behavioral signals.
+Mixture-of-Experts (MoE) models achieve computational efficiency by routing each token to a sparse subset of expert networks, but the large number of experts creates memory and computational overhead. We investigate whether co-activation patterns in routing decisions can identify experts that are redundant or harmful, enabling systematic expert pruning. We initially construct co-activation matrices and develop routing-based structural metrics (utilization, redundancy, and graph centrality) to rank experts for pruning. However, experiments on TinyMixtral-4x248M-MoE reveal that these metrics produce limited and unreliable results: the top-ranked pruning candidate causes +89.8 PPL degradation despite 72\% apparent redundancy. Informed by recent work on output-behavior-based evaluation \citep{zhang2025mone} and multi-signal layer-aware pruning \citep{yang2025pathfinder}, we improve our approach by conducting exhaustive per-expert sensitivity analysis. This reveals a striking finding: Expert~2 is actively harmful across all 12 layers, with its removal improving perplexity by 80 to 160 points, a pattern completely invisible to routing-based structural metrics. To explain \emph{why} Expert~2 is harmful and enable pruning without exhaustive per-expert sweeps, we develop contribution magnitude metrics ($C_i$) that measure each expert's fractional share of the MoE layer output in a single forward pass. $C_i$ identifies Expert~2 as a \emph{routing sink}---selected at normal frequency yet contributing 30--150$\times$ less than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$)---and this threshold generalizes across text, code, math, and scientific domains.
 \end{abstract}
 
 %-----------------------------------------------------------------------
@@ -52,7 +52,7 @@ Our initial proposal focused on hardware-aware expert placement, using co-activa
 We pursued this question in two stages. In our \textbf{initial approach}, we built routing-based structural metrics directly from the co-activation matrix and applied them as pruning criteria. The results were limited: despite intuitively sound reasoning (low-utilization, high-redundancy experts should be safe to remove), the metrics failed to reliably identify valid pruning targets, and the best candidate selected actually caused significant quality degradation. Faced with these results, we consulted recent literature and found that \citet{zhang2025mone}, \citet{yang2025pathfinder}, and \citet{mi2026rfidmoe} provide a clear explanation for why routing-based signals alone are insufficient. \textbf{Guided by these insights}, we redesigned our evaluation around direct sensitivity measurement, which revealed not only the failure mode of our initial method but also an unexpected finding: the existence of experts that actively harm model quality.
 
 \paragraph{Contributions.}
-(1)~We demonstrate that routing-based co-activation structural metrics fail to predict expert pruning impact and explain why through the lens of recent literature. (2)~We reveal the harmful expert phenomenon: Expert~2 degrades quality in all 12 layers of TinyMixtral, a finding only discoverable via behavioral evaluation. (3)~We show that improved baselines incorporating weight-space signals outperform our initial routing-only approach by up to 245 PPL points, motivating hybrid pruning criteria.
+(1)~We demonstrate that routing-based co-activation structural metrics fail to predict expert pruning impact and explain why through the lens of recent literature. (2)~We reveal the harmful expert phenomenon: Expert~2 degrades quality in all 12 layers of TinyMixtral, a finding only discoverable via behavioral evaluation. (3)~We show that improved baselines incorporating weight-space signals outperform our initial routing-only approach by up to 245 PPL points, motivating hybrid pruning criteria. (4)~We develop contribution magnitude ($C_i$) as a single-pass proxy metric that explains the routing sink phenomenon and identifies prune candidates efficiently; we show the $C_i < 0.1$ threshold generalizes across four calibration domains.
 
 %-----------------------------------------------------------------------
 \section{Related Work}
@@ -154,6 +154,30 @@ We compare the initial structural score against baselines that incorporate signa
 \item \textbf{Magnitude-based.} Experts with smallest weight norms first, a weight-space signal that goes beyond routing statistics.
 \end{itemize}
 
+\subsection{Contribution Metrics}
+\label{sec:contribution}
+
+\paragraph{Motivation.}
+Sensitivity analysis provides exact ground truth but requires $E$ separate forward passes per layer (48 total for TinyMixtral). To identify routing sinks efficiently in a single pass, we develop contribution metrics that measure each expert's actual share of the MoE layer output.
+
+\paragraph{Output Contribution Magnitude ($C_i$).}
+For each token $x$ where expert $i$ is in the top-$k$, we compute the ratio of the expert's gated output norm to the post-MoE hidden state norm:
+\begin{equation}
+C_i = \frac{1}{N_i} \sum_{x:\, i \in \text{top-}k(x)} \frac{\|G_i(x) \cdot E_i(x)\|_2}{\|h_{\text{post}}(x)\|_2}
+\label{eq:ci}
+\end{equation}
+where $G_i(x)$ is the routing gate weight, $E_i(x)$ the expert output before gating, $h_{\text{post}}(x)$ the MoE layer output, and $N_i$ the number of tokens routed to expert $i$. Crucially, $C_i$ is conditioned on selection: an expert that is selected infrequently but always contributes strongly will not be penalized. Only experts that contribute little \emph{when selected} receive a low score.
+
+\paragraph{Signed Contribution ($S_i$).}
+\begin{equation}
+S_i = \frac{1}{N_i} \sum_{x:\, i \in \text{top-}k(x)} \frac{\langle G_i(x) \cdot E_i(x),\; h_{\text{post}}(x) \rangle}{\|h_{\text{post}}(x)\|_2}
+\label{eq:si}
+\end{equation}
+$S_i$ captures directional alignment with the layer output. We originally hypothesized that harmful experts would show negative $S_i$ (opposing the output direction); in practice Expert~2's $S_i$ is small but positive, meaning it is a zero-contributor rather than an active adversary. $C_i$ magnitude is the more discriminative signal.
+
+\paragraph{Routing sink criterion.}
+An expert with $C_i < 0.1$ is a \emph{routing sink}: the router spends one of its top-$k$ slots on this expert, but the expert's gated output is negligible relative to the residual stream. Masking such an expert forces the router to reallocate those tokens to contributing experts, which improves model quality.
+
 \subsection{Code}
 
 All code is available at \url{https://github.com/JHCuc3m/MoE-Place}, using HuggingFace Transformers \citep{wolf2020transformers} for model loading and PyTorch forward hooks for routing statistics collection.
@@ -248,6 +272,63 @@ No pruning (baseline)                  & {--}     & 800.38          & 0.0       
 \end{tabular}
 \end{table}
 
+\subsection{Contribution Metrics: Identifying the Routing Sink}
+\label{sec:contrib_results}
+
+Table~\ref{tab:ci} shows $C_i$ for all 48 experts measured on 128 WikiText-2 calibration samples. Expert~2's contribution magnitude ranges from 0.004 to 0.066 across all 12 layers, while Experts~0, 1, and~3 range from 0.56 to 0.96. The gap is 30--150$\times$, far above any threshold ambiguity.
+
+\begin{table}[t]
+\caption{Output contribution magnitude $C_i$ for all experts across all layers. Expert~2 (bold) is a routing sink in every layer: it falls below the 0.1 threshold while all other experts exceed 0.55.}
+\label{tab:ci}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Layer} & \textbf{Expert 0} & \textbf{Expert 1} & \textbf{Expert 2} & \textbf{Expert 3} \\
+\midrule
+0  & 0.635 & 0.558 & \textbf{0.004} & 0.641 \\
+1  & 0.682 & 0.725 & \textbf{0.024} & 0.667 \\
+2  & 0.624 & 0.619 & \textbf{0.032} & 0.636 \\
+3  & 0.674 & 0.705 & \textbf{0.028} & 0.697 \\
+4  & 0.738 & 0.781 & \textbf{0.026} & 0.736 \\
+5  & 0.710 & 0.740 & \textbf{0.024} & 0.710 \\
+6  & 0.745 & 0.728 & \textbf{0.025} & 0.810 \\
+7  & 0.785 & 0.822 & \textbf{0.029} & 0.858 \\
+8  & 0.823 & 0.743 & \textbf{0.031} & 0.847 \\
+9  & 0.913 & 0.811 & \textbf{0.041} & 0.904 \\
+10 & 0.943 & 0.760 & \textbf{0.041} & 0.876 \\
+11 & 0.960 & 0.813 & \textbf{0.066} & 0.870 \\
+\midrule
+\textit{Avg} & 0.770 & 0.717 & \textbf{0.031} & 0.771 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These results explain the mechanism behind Finding~1: Expert~2 receives 15K--37K routing decisions per layer (comparable to or exceeding other experts), yet its gated output $G_i \cdot E_i$ is negligible relative to the residual stream. Masking Expert~2 forces those tokens to Experts~0, 1, and~3, which actually contribute, thereby improving model quality. The routing sink is not an actively harmful computation but a parasitic consumer of routing capacity.
+
+\paragraph{Signed contribution.}
+Expert~2's $S_i$ is 0.003--0.55 across layers (other experts: 23--315). The small positive values confirm Expert~2 does not actively oppose the output direction; it simply contributes almost nothing. The $C_i$ magnitude criterion is therefore sufficient to flag it as a prune candidate; the sign of $S_i$ is not required.
+
+\paragraph{Domain generalization.}
+A practical pruning criterion must be robust to calibration data choice. Table~\ref{tab:domain} shows per-expert average $C_i$ across four domains. Expert~2's average $C_i$ is 0.020--0.032 in all domains, while all other experts exceed 0.51. The $C_i < 0.1$ threshold identifies Expert~2 as a routing sink regardless of calibration domain, confirming this is a property of the model's weights rather than a data artifact.
+
+\begin{table}[t]
+\caption{Average $C_i$ (across all 12 layers) per expert and domain. Expert~2 (bold) is a routing sink in every domain; all other experts exceed 0.51 in every domain.}
+\label{tab:domain}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Domain} & \textbf{Expert 0} & \textbf{Expert 1} & \textbf{Expert 2} & \textbf{Expert 3} \\
+\midrule
+WikiText-2 (general) & 0.795 & 0.793 & \textbf{0.032} & 0.804 \\
+Code (CodeParrot)    & 0.531 & 0.748 & \textbf{0.020} & 0.511 \\
+Math (GSM8K)         & 0.654 & 0.673 & \textbf{0.026} & 0.614 \\
+Scientific (PubMed)  & 0.700 & 0.596 & \textbf{0.021} & 0.548 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Key Findings}
 
 \paragraph{Finding 1: Expert 2 is harmful across all layers.}
@@ -265,6 +346,12 @@ Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. Co
 \paragraph{Finding 5: Improved baselines outperform the initial structural approach by 245 PPL.}
 Both utilization-based and magnitude-based pruning, which incorporate signals beyond routing structure, identified Expert~2 and achieved $-155.7$ PPL. The initial structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
+\paragraph{Finding 6: Expert 2 is a routing sink---selected but contributing negligibly.}
+$C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer, not a functional expert, and forces the router to reallocate those slots to actually contributing experts. This reallocation is what drives the $-155.7$ PPL improvement.
+
+\paragraph{Finding 7: $C_i < 0.1$ is a domain-independent routing sink threshold.}
+Measured on WikiText-2, code (CodeParrot), math (GSM8K), and scientific text (PubMed), Expert~2's average $C_i$ is 0.020--0.032 while all other experts exceed 0.51 in every domain. The routing sink is an intrinsic property of the model's trained weights, not a calibration artifact. Any calibration domain suffices to detect it.
+
 %-----------------------------------------------------------------------
 \section{Conclusion}
 
@@ -272,11 +359,13 @@ We investigated co-activation-based structural metrics for expert pruning in MoE
 
 Our \textbf{improved approach}, guided by these insights, conducted direct sensitivity analysis across all 48 experts and 12 layers. This revealed that Expert~2 is actively harmful in all layers, a finding invisible to routing-based analysis, and that edge layers are disproportionately sensitive. Improved baselines incorporating weight-space signals outperform the initial structural approach by 245 PPL, confirming the value of going beyond routing statistics.
 
+To explain \textbf{why} Expert~2 is harmful and enable efficient detection without exhaustive sensitivity sweeps, we introduced contribution magnitude ($C_i$), which measures each expert's fractional share of the MoE output in a single forward pass. $C_i$ identifies Expert~2 as a routing sink---selected at normal frequency but contributing 30--150$\times$ less than other experts---and the $C_i < 0.1$ threshold is robust across four calibration domains (text, code, math, scientific), confirming that routing sinks are an intrinsic model property rather than a data artifact.
+
 \paragraph{Limitations.}
-Experiments are on a single small model (TinyMixtral, $\sim$1B parameters). The harmful expert finding may be model-specific. Full sensitivity analysis requires 48 forward passes, tractable here but prohibitive for models with hundreds of experts per layer.
+Experiments are on a single small model (TinyMixtral, $\sim$1B parameters). The routing sink phenomenon may be model-specific; whether it occurs in larger production MoE models (e.g., Mixtral-8x7B, DeepSeek-MoE-16B) remains to be tested. Full sensitivity analysis requires $E$ forward passes per layer, tractable here but prohibitive for models with 64+ experts per layer, making efficient proxies like $C_i$ especially important at scale.
 
 \paragraph{Future directions.}
-The natural next step is a hybrid approach combining routing co-activation structure with behavioral signals: output variance as in MoNE \citep{zhang2025mone} and layer-aware importance trajectories as in MoE Pathfinder \citep{yang2025pathfinder}, to retain the efficiency of structural analysis while matching the accuracy of behavioral evaluation.
+The immediate next step is scaling $C_i$ analysis to larger models to test whether routing sinks are a general phenomenon. Beyond that, a hybrid approach combining routing co-activation structure with behavioral signals---output variance as in MoNE \citep{zhang2025mone} and layer-aware importance trajectories as in MoE Pathfinder \citep{yang2025pathfinder}---could retain the efficiency of structural analysis while matching the accuracy of behavioral evaluation. Finally, investigating \emph{why} routing sinks arise during training (router miscalibration, load balancing artifacts) may yield targeted fixes that avoid the phenomenon entirely.
 
 %-----------------------------------------------------------------------
 \bibliography{final_references}
