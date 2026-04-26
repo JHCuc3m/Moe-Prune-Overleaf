@@ -195,23 +195,14 @@ All code is available at \url{https://github.com/JHCuc3m/MoE-Place}, using Huggi
 
 \subsection{Initial Approach Results: Limited and Unreliable}
 
-Baseline (unpruned) perplexity: 800.38. The structural score selected Expert~1 for pruning, yielding 890.15 (+89.77, +11.2\%). Table~\ref{tab:structural_fail} shows the underlying problem: structural ranking is poorly correlated with actual sensitivity. The most beneficial expert to remove (Expert~2) is ranked 25th; the most critical to keep (Expert~0) is ranked 37th, near the bottom, implying it should be pruned.
+Baseline (unpruned) perplexity: 800.38. The structural score selected Expert~1 for pruning, yielding 890.15 (+89.77, +11.2\%). Figure~\ref{fig:structural_scatter} reveals the underlying problem across all 48 experts: structural score and actual sensitivity are uncorrelated. Expert~2 (red stars), harmful in every layer, is scattered across the full range of structural scores (0.0--0.8) with no consistent signal. The most critical expert to keep (Expert~0, top-left, sensitivity +188) has near-zero structural score, implying it should be pruned first.
 
-\begin{table}[t]
-\caption{Initial approach: structural score vs.\ actual sensitivity for Layer~0. The ranking systematically misidentifies the most actionable experts.}
-\label{tab:structural_fail}
+\begin{figure}[t]
 \centering
-\small
-\begin{tabular}{lccc}
-\toprule
-\textbf{Expert} & \textbf{Structural Rank} & \textbf{Structural Score} & \textbf{Actual Sensitivity} \\
-\midrule
-Expert 1 & 1 \textit{(prune first)} & 0.789 & +89.8 \textit{(important)} \\
-Expert 2 & 25 \textit{(middle)}     & 0.600 & $-$155.7 \textit{(harmful!)} \\
-Expert 0 & 37 \textit{(keep)}       & 0.012 & +188.2 \textit{(critical)} \\
-\bottomrule
-\end{tabular}
-\end{table}
+\includegraphics[width=0.72\linewidth]{plots/structural_vs_sensitivity.png}
+\caption{Structural score vs.\ ground truth sensitivity for all 48 experts (12 layers $\times$ 4 experts). No correlation is visible. Expert~2 (red stars) is harmful in every layer yet spans the full range of structural scores, confirming the metric cannot detect routing sinks.}
+\label{fig:structural_scatter}
+\end{figure}
 
 \subsection{Sensitivity Analysis: Ground Truth Results}
 
