@@ -150,7 +150,6 @@ We compare the initial structural score against baselines that incorporate signa
 \begin{itemize}
 \item \textbf{No pruning.} Unpruned model as quality ceiling.
 \item \textbf{Random pruning.} Experts removed uniformly at random.
-\item \textbf{Utilization-based.} Least-frequently-selected experts first \citep{he2024demystifying}.
 \item \textbf{Magnitude-based.} Experts with smallest weight norms first, a weight-space signal that goes beyond routing statistics.
 \end{itemize}
 
@@ -228,31 +227,6 @@ Structural Score (combined) & \textbf{8.3\%} & $-$0.03 & \textbf{Worst} \\
 
 Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensitivity across all 48 experts and 12 layers, providing a complete behavioral picture that routing analysis alone cannot provide.
 
-\begin{table}[t]
-\caption{Ground truth sensitivity: PPL increase when each expert is disabled. Negative = removal \emph{improves} quality. \textbf{Bold} = most sensitive expert per layer.}
-\label{tab:sensitivity}
-\centering
-\small
-\begin{tabular}{lccccc}
-\toprule
-\textbf{Layer} & \textbf{Expert 0} & \textbf{Expert 1} & \textbf{Expert 2} & \textbf{Expert 3} & \textbf{Most Sensitive} \\
-\midrule
-0  & \textbf{+188.2} & +89.8            & $-$155.7 & +87.9            & Expert 0 \\
-1  & +31.7           & \textbf{+44.3}   & $-$79.1  & +38.5            & Expert 1 \\
-2  & +18.1           & +41.1            & $-$80.9  & \textbf{+47.9}   & Expert 3 \\
-3  & +22.0           & \textbf{+67.2}   & $-$110.6 & +60.2            & Expert 1 \\
-4  & +43.6           & \textbf{+115.0}  & $-$152.5 & +50.0            & Expert 1 \\
-5  & +36.1           & \textbf{+101.3}  & $-$162.2 & +60.8            & Expert 1 \\
-6  & +55.6           & +58.3            & $-$156.9 & \textbf{+91.7}   & Expert 3 \\
-7  & +36.6           & +105.3           & $-$163.0 & \textbf{+108.9}  & Expert 3 \\
-8  & +42.7           & +43.2            & $-$94.3  & \textbf{+80.9}   & Expert 3 \\
-9  & \textbf{+54.5}  & +29.2            & $-$84.7  & +51.7            & Expert 0 \\
-10 & \textbf{+123.5} & +14.5            & $-$107.6 & +50.5            & Expert 0 \\
-11 & \textbf{+190.4} & $-$1.2           & $-$89.1  & +32.1            & Expert 0 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.7\linewidth]{plots/sensitivity_heatmap.png}
@@ -262,7 +236,7 @@ Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensiti
 
 \subsection{Pruning Baseline Comparison}
 
-Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivity oracle as ground truth. Both comparison baselines, which use signals beyond routing structure, correctly identify Expert~2, while our structural approach does not.
+Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivity oracle as ground truth. Magnitude based approach correctly identify Expert~2, while the structural approach does not.
 
 \begin{table}[t]
 \caption{Pruning strategy comparison for Layer~0. Negative $\Delta$PPL = improvement over baseline (800.38). Sensitivity oracle is the exhaustive ground truth; baselines use alternative signals for comparison.}
