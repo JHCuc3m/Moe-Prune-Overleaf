@@ -315,9 +315,6 @@ Table~\ref{tab:ci} shows $C_i$ for all 48 experts measured on 128 WikiText-2 cal
 
 These results explain the mechanism behind Finding~1: Expert~2 receives 15K--37K routing decisions per layer (comparable to or exceeding other experts), yet its gated output $G_i \cdot E_i$ is negligible relative to the residual stream. Masking Expert~2 forces those tokens to Experts~0, 1, and~3, which actually contribute, thereby improving model quality. The routing sink is not an actively harmful computation but a parasitic consumer of routing capacity.
 
-\paragraph{Testing the adversarial hypothesis via $S_i$.}
-Our hypothesis was that Expert~2 would show negative $S_i$, actively opposing the residual stream. The data falsifies this: Expert~2's $S_i$ is 0.003--0.55 across layers (other experts: 23--315). Expert~2 is not an adversary---it is a ghost. Its outputs are small but positively aligned; it simply contributes almost nothing when selected. This distinction matters conceptually: the router is not being misled into selecting a destructive expert, it is wasting a routing slot on a near-inert one. The $C_i$ magnitude criterion captures this; a sign-based $S_i$ rule would not have detected Expert~2 at all.
-
 \paragraph{Domain generalization.}
 A practical pruning criterion must be robust to calibration data choice. Table~\ref{tab:domain} shows per-expert average $C_i$ across four domains. Expert~2's average $C_i$ is 0.020--0.032 in all domains, while all other experts exceed 0.51. The $C_i < 0.1$ threshold identifies Expert~2 as a routing sink regardless of calibration domain, confirming this is a property of the model's weights rather than a data artifact.
 
@@ -338,6 +335,9 @@ Scientific (PubMed)  & 0.700 & 0.596 & \textbf{0.021} & 0.548 \\
 \end{tabular}
 \end{table}
 
+\paragraph{Testing the adversarial hypothesis via $S_i$.}
+Our hypothesis was that Expert~2 would show negative $S_i$, actively opposing the residual stream. The data falsifies this: Expert~2's $S_i$ is 0.003--0.55 across layers (other experts: 23--315). Expert~2 is not an adversary---it is a ghost. Its outputs are small but positively aligned; it simply contributes almost nothing when selected. This distinction matters conceptually: the router is not being misled into selecting a destructive expert, it is wasting a routing slot on a near-inert one. The $C_i$ magnitude criterion captures this; a sign-based $S_i$ rule would not have detected Expert~2 at all.
+
 \subsection{Key Findings}
 
 \paragraph{Finding 1: Expert 2 is harmful across all layers.}
@@ -349,10 +349,10 @@ Layers~0 and~11 show sensitivity up to 4$\times$ higher than middle layers. This
 \paragraph{Finding 3: Routing-based structural metrics fundamentally fail to predict sensitivity.}
 Structural rankings are poorly correlated with ground-truth sensitivity across all 48 experts, and combining metrics makes things worse (8.3\% top-1 agreement vs.\ 25\% random). The root cause is a flawed assumption: co-activation redundancy measures routing \emph{correlation}, not computational \emph{substitutability}. Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. As RFID-MoE \citep{mi2026rfidmoe} establishes more broadly, routing frequency is doubly unreliable: it misses important low-frequency experts and, as we show, fails to flag harmful mid-frequency ones.
 
-\paragraph{Finding 5: Comparison baselines outperform the structural approach by 245 PPL.}
+\paragraph{Finding 4: Comparison baselines outperform the structural approach by 245 PPL.}
 Magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the sensitivity oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
-\paragraph{Finding 6: Expert 2 is a routing sink, and $C_i < 0.1$ is a domain-independent criterion to detect it.}
+\paragraph{Finding 5: Expert 2 is a routing sink, and $C_i < 0.1$ is a domain-independent criterion to detect it.}
 $C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer and forces the router to reallocate those slots to contributing experts, driving the $-155.7$ PPL improvement. Measured across WikiText-2, code, math, and scientific text, Expert~2's average $C_i$ is 0.020--0.032 in every domain while all other experts exceed 0.51. The routing sink is an intrinsic property of the model's weights, not a calibration artifact, and any calibration domain suffices to detect it.
 
 %-----------------------------------------------------------------------
