@@ -220,8 +220,6 @@ Redundancy            & 16.7\% & $-$0.35 & \textit{Inverted} \\
 Centrality            & 16.7\% & $+$0.23 & Fails \\
 \midrule
 Structural Score (combined) & \textbf{8.3\%} & $-$0.03 & \textbf{Worst} \\
-\midrule
-Random baseline       & 25.0\% & --- & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -276,10 +274,8 @@ Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivit
 \textbf{Method} & \textbf{Expert Removed} & \textbf{PPL} & \textbf{$\Delta$PPL} \\
 \midrule
 No pruning (baseline)                  & {--}     & 800.38          & 0.0       \\
-Structural score (ours)        & Expert 1 & 890.15          & +89.8     \\
-Random (avg.)                  & random   & $\sim$865       & $\sim$+65 \\
-Utilization-based (baseline)   & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
-Magnitude-based (baseline)     & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
+Structural score        & Expert 1 & 890.15          & +89.8     \\
+Magnitude-based     & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
 Sensitivity oracle (ground truth) & Expert 2 & 644.68       & $-$155.7  \\
 \bottomrule
 \end{tabular}
@@ -357,7 +353,7 @@ Structural rankings are poorly correlated with ground-truth sensitivity across a
 Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. Co-activation captures routing \emph{correlation}, not computational \emph{substitutability}, which is the core flawed assumption of the initial approach.
 
 \paragraph{Finding 5: Comparison baselines outperform the structural approach by 245 PPL.}
-Both utilization-based and magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the sensitivity oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
+Magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the sensitivity oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
 \paragraph{Finding 6: Expert 2 is a routing sink---selected but contributing negligibly.}
 $C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer, not a functional expert, and forces the router to reallocate those slots to actually contributing experts. This reallocation is what drives the $-155.7$ PPL improvement.
