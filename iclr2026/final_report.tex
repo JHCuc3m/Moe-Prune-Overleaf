@@ -38,7 +38,7 @@ Jane Yijun Sun conducted the literature review, led ideas on the research direct
 
 %-----------------------------------------------------------------------
 \begin{abstract}
-Mixture-of-Experts (MoE) models achieve computational efficiency by routing each token to a sparse subset of expert networks, but the large number of experts creates memory and computational overhead. We investigate whether co-activation patterns in routing decisions can identify experts that are redundant or harmful, enabling systematic expert pruning. We initially construct co-activation matrices and develop routing-based structural metrics (utilization, redundancy, and graph centrality) to rank experts for pruning. However, experiments on TinyMixtral-4x248M-MoE reveal that these metrics produce limited and unreliable results: the top-ranked pruning candidate causes +89.8 PPL degradation despite 72\% apparent redundancy. Informed by recent work on output-behavior-based evaluation \citep{zhang2025mone} and multi-signal layer-aware pruning \citep{yang2025pathfinder}, we improve our approach by conducting exhaustive per-expert sensitivity analysis. This reveals a striking finding: Expert~2 is actively harmful across all 12 layers, with its removal improving perplexity by 80 to 160 points, a pattern completely invisible to routing-based structural metrics. To explain \emph{why} Expert~2 is harmful and enable pruning without exhaustive per-expert sweeps, we develop contribution magnitude metrics ($C_i$) that measure each expert's fractional share of the MoE layer output in a single forward pass. $C_i$ identifies Expert~2 as a \emph{routing sink}---selected at normal frequency yet contributing 30--150$\times$ less than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$)---and this threshold generalizes across text, code, math, and scientific domains.
+Mixture-of-Experts (MoE) models achieve computational efficiency by routing each token to a sparse subset of expert networks, but the large number of experts creates memory and computational overhead. We investigate whether co-activation patterns in routing decisions can identify experts that are redundant or harmful, enabling systematic expert pruning. We initially construct co-activation matrices and develop routing-based structural metrics (utilization, redundancy, and graph centrality) to rank experts for pruning. However, experiments on TinyMixtral-4x248M-MoE reveal that these metrics produce limited and unreliable results: the top-ranked pruning candidate causes +89.8 PPL degradation despite 72\% apparent redundancy. Informed by recent work on output-behavior-based evaluation \citep{zhang2025mone} and multi-signal layer-aware pruning \citep{yang2025pathfinder}, we conduct exhaustive per-expert sensitivity analysis to establish a reliable ground truth. This reveals a striking finding: Expert~2 is actively harmful across all 12 layers, with its removal improving perplexity by 80 to 160 points, a pattern completely invisible to routing-based structural metrics. To explain \emph{why} Expert~2 is harmful and enable pruning without exhaustive per-expert sweeps, we develop contribution magnitude metrics ($C_i$) that measure each expert's fractional share of the MoE layer output in a single forward pass. $C_i$ identifies Expert~2 as a \emph{routing sink}---selected at normal frequency yet contributing 30--150$\times$ less than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$)---and this threshold generalizes across text, code, math, and scientific domains.
 \end{abstract}
 
 %-----------------------------------------------------------------------
@@ -49,7 +49,7 @@ Sparse Mixture-of-Experts (MoE) architectures enable large language models to sc
 Our initial proposal focused on hardware-aware expert placement, using co-activation patterns to optimize expert execution order and exploit GPU memory hierarchy for faster inference \citep{luo2025occult}. During this investigation, we identified a more fundamental question: \emph{can co-activation patterns reveal which experts are redundant or even harmful, enabling systematic expert pruning?}
 
 \paragraph{Research journey.}
-We pursued this question in two stages. In our \textbf{initial approach}, we built routing-based structural metrics directly from the co-activation matrix and applied them as pruning criteria. The results were limited: despite intuitively sound reasoning (low-utilization, high-redundancy experts should be safe to remove), the metrics failed to reliably identify valid pruning targets, and the best candidate selected actually caused significant quality degradation. Faced with these results, we consulted recent literature and found that \citet{zhang2025mone}, \citet{yang2025pathfinder}, and \citet{mi2026rfidmoe} provide a clear explanation for why routing-based signals alone are insufficient. To understand the true pruning landscape, we conducted exhaustive per-expert sensitivity analysis---feasible here because our model is small---which revealed not only the failure mode of our structural metrics but also an unexpected finding: the existence of experts that actively harm model quality. We then developed contribution metrics ($C_i$) to explain this phenomenon and provide an efficient single-pass proxy for future use on larger models.
+We pursued this question in three stages. In our \textbf{initial approach}, we built routing-based structural metrics directly from the co-activation matrix and applied them as pruning criteria. The results were limited: despite intuitively sound reasoning (low-utilization, high-redundancy experts should be safe to remove), the metrics failed to reliably identify valid pruning targets, and the best candidate selected actually caused significant quality degradation. Faced with these results, we consulted recent literature and found that \citet{zhang2025mone}, \citet{yang2025pathfinder}, and \citet{mi2026rfidmoe} provide a clear explanation for why routing-based signals alone are insufficient. To understand the true pruning landscape, we conducted exhaustive per-expert sensitivity analysis---feasible here because our model is small---which revealed not only the failure mode of our structural metrics but also an unexpected finding: the existence of experts that actively harm model quality. We then developed contribution metrics ($C_i$) to explain this phenomenon and provide an efficient single-pass proxy for future use on larger models.
 
 \paragraph{Contributions.}
 (1)~We demonstrate that routing-based co-activation structural metrics fail to predict expert pruning impact and explain why through the lens of recent literature. (2)~We reveal the harmful expert phenomenon: Expert~2 degrades quality in all 12 layers of TinyMixtral. (3)~We show that comparison baselines incorporating weight-space signals outperform our structural approach by up to 245 PPL points, with exhaustive sensitivity analysis confirming Expert~2 as the ground truth pruning target. (4)~We develop contribution magnitude ($C_i$) as a single-pass proxy metric that explains the routing sink phenomenon and identifies prune candidates efficiently; we show the $C_i < 0.1$ threshold generalizes across four calibration domains.
@@ -67,7 +67,7 @@ Occult \citep{luo2025occult} models expert co-activation frequency to place coll
 \citet{he2024demystifying} proposed a unified compression framework combining expert-level weight pruning, quantization, and structured module removal, establishing that utilization and weight magnitude are the dominant signals in existing work. Our initial approach follows the same paradigm but derives signals from co-activation structure instead of weight properties, an approach whose limitations motivated exhaustive sensitivity analysis and the contribution metrics described below.
 
 \paragraph{Why routing-based signals are insufficient: insights from recent work.}
-After observing the limited results of our initial routing-based approach, we examined three recent papers that directly informed our improved methodology.
+After observing the limited results of our initial routing-based approach, we examined three recent papers that directly informed our analysis.
 
 \citet{zhang2025mone} propose MoNE, which demonstrates that access frequency alone produces unstable and unreliable pruning results across model architectures and calibration settings. Their key insight is that \emph{output variance}, a behavioral signal, must be considered alongside routing statistics to robustly identify safe pruning targets. This directly explains our initial failure: our utilization and redundancy metrics capture structural position in the routing graph, but not whether removing an expert will actually affect model outputs. Inspired by MoNE, we moved from structural proxies toward direct sensitivity measurement.
 
@@ -86,10 +86,10 @@ Our initial approach builds pruning criteria directly from the co-activation mat
 
 We profile routing decisions by forwarding a calibration corpus through each MoE layer and recording the top-$k$ selected experts per token. For a layer with $E$ experts, we define:
 \begin{equation}
-C_{ij} = \sum_{t=1}^{T} \mathbf{1}[i \in \text{top-}k(t)] \cdot \mathbf{1}[j \in \text{top-}k(t)], \quad i \neq j
+A_{ij} = \sum_{t=1}^{T} \mathbf{1}[i \in \text{top-}k(t)] \cdot \mathbf{1}[j \in \text{top-}k(t)], \quad i \neq j
 \label{eq:collab}
 \end{equation}
-where $T$ is the number of tokens. High $C_{ij}$ means experts $i$ and $j$ are frequently co-selected. Figure~\ref{fig:coactivation} shows Layer~0's co-activation matrix.
+where $T$ is the number of tokens. High $A_{ij}$ means experts $i$ and $j$ are frequently co-selected. Figure~\ref{fig:coactivation} shows Layer~0's co-activation matrix.
 
 \begin{figure}[t]
 \centering
@@ -112,9 +112,9 @@ where $T$ is the number of tokens. High $C_{ij}$ means experts $i$ and $j$ are f
 
 \paragraph{Graph Centrality.}
 \begin{equation}
-\mathbf{c} = \lambda^{-1} \mathbf{C} \mathbf{c}
+\mathbf{c} = \lambda^{-1} \mathbf{A} \mathbf{c}
 \end{equation}
-where $\mathbf{c}$ is the eigenvector centrality and $\lambda$ the dominant eigenvalue.
+where $\mathbf{A}$ is the co-activation matrix, $\mathbf{c}$ the eigenvector centrality, and $\lambda$ the dominant eigenvalue.
 
 \paragraph{Structural Score.}
 \begin{equation}
@@ -143,7 +143,7 @@ To obtain a reliable ground truth for which experts are safe or harmful to prune
 \end{equation}
 Positive: expert is important (removal hurts). Negative: expert is \emph{harmful} (removal helps). We evaluate all 48 experts across all 12 layers, yielding a complete behavioral ground-truth map.
 
-\subsubsection{Improved Pruning Baselines}
+\subsubsection{Comparison Baselines}
 
 We compare the initial structural score against baselines that incorporate signals beyond routing:
 
@@ -228,7 +228,7 @@ Random baseline       & 25.0\% & --- & --- \\
 
 \subsection{Sensitivity Analysis: Ground Truth Results}
 
-Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensitivity across all 48 experts and 12 layers, providing a complete behavioral picture unavailable from routing analysis alone.
+Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensitivity across all 48 experts and 12 layers, providing a complete behavioral picture that routing analysis alone cannot provide.
 
 \begin{table}[t]
 \caption{Ground truth sensitivity: PPL increase when each expert is disabled. Negative = removal \emph{improves} quality. \textbf{Bold} = most sensitive expert per layer.}
@@ -264,7 +264,7 @@ Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensiti
 
 \subsection{Pruning Baseline Comparison}
 
-Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivity oracle as ground truth. Both comparison baselines, which use signals beyond routing structure, happen to identify Expert~2, while our structural approach does not.
+Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivity oracle as ground truth. Both comparison baselines, which use signals beyond routing structure, correctly identify Expert~2, while our structural approach does not.
 
 \begin{table}[t]
 \caption{Pruning strategy comparison for Layer~0. Negative $\Delta$PPL = improvement over baseline (800.38). Sensitivity oracle is the exhaustive ground truth; baselines use alternative signals for comparison.}
@@ -345,30 +345,24 @@ Scientific (PubMed)  & 0.700 & 0.596 & \textbf{0.021} & 0.548 \\
 \subsection{Key Findings}
 
 \paragraph{Finding 1: Expert 2 is harmful across all layers.}
-Expert~2 shows negative sensitivity in every layer (range: $-79$ to $-163$), a pattern completely invisible to the initial routing-based structural metrics (ranked 25th out of 48). The improved sensitivity analysis, motivated by MoNE's \citep{zhang2025mone} emphasis on behavioral signals, successfully reveals this.
+Expert~2 shows negative sensitivity in every layer (range: $-79$ to $-163$), a pattern completely invisible to the initial routing-based structural metrics (ranked 25th out of 48). Exhaustive sensitivity analysis, motivated by MoNE's \citep{zhang2025mone} emphasis on behavioral signals, successfully reveals this.
 
 \paragraph{Finding 2: Edge layers are critical.}
 Layers~0 and~11 show sensitivity up to 4$\times$ higher than middle layers. This heterogeneity explains in part why the initial uniform structural criterion failed, and directly validates MoE Pathfinder's \citep{yang2025pathfinder} argument for layer-aware evaluation.
 
-\paragraph{Finding 3: Routing-based structural metrics do not predict sensitivity.}
-Structural rankings are poorly correlated with ground-truth sensitivity across all 48 experts. As RFID-MoE \citep{mi2026rfidmoe} establishes more broadly, routing frequency is an unreliable proxy: low-utilization experts can encode critical information, and as we show, mid-utilization experts can be actively harmful.
-
-\paragraph{Finding 4: Redundancy $\neq$ replaceability.}
-Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. Co-activation captures routing \emph{correlation}, not computational \emph{substitutability}, which is the core flawed assumption of the initial approach.
+\paragraph{Finding 3: Routing-based structural metrics fundamentally fail to predict sensitivity.}
+Structural rankings are poorly correlated with ground-truth sensitivity across all 48 experts, and combining metrics makes things worse (8.3\% top-1 agreement vs.\ 25\% random). The root cause is a flawed assumption: co-activation redundancy measures routing \emph{correlation}, not computational \emph{substitutability}. Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. As RFID-MoE \citep{mi2026rfidmoe} establishes more broadly, routing frequency is doubly unreliable: it misses important low-frequency experts and, as we show, fails to flag harmful mid-frequency ones.
 
 \paragraph{Finding 5: Comparison baselines outperform the structural approach by 245 PPL.}
 Both utilization-based and magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the sensitivity oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
-\paragraph{Finding 6: Expert 2 is a routing sink---selected but contributing negligibly.}
-$C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer, not a functional expert, and forces the router to reallocate those slots to actually contributing experts. This reallocation is what drives the $-155.7$ PPL improvement.
-
-\paragraph{Finding 7: $C_i < 0.1$ is a domain-independent routing sink threshold.}
-Measured on WikiText-2, code (CodeParrot), math (GSM8K), and scientific text (PubMed), Expert~2's average $C_i$ is 0.020--0.032 while all other experts exceed 0.51 in every domain. The routing sink is an intrinsic property of the model's trained weights, not a calibration artifact. Any calibration domain suffices to detect it.
+\paragraph{Finding 6: Expert 2 is a routing sink, and $C_i < 0.1$ is a domain-independent criterion to detect it.}
+$C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer and forces the router to reallocate those slots to contributing experts, driving the $-155.7$ PPL improvement. Measured across WikiText-2, code, math, and scientific text, Expert~2's average $C_i$ is 0.020--0.032 in every domain while all other experts exceed 0.51. The routing sink is an intrinsic property of the model's weights, not a calibration artifact, and any calibration domain suffices to detect it.
 
 %-----------------------------------------------------------------------
 \section{Conclusion}
 
-We investigated co-activation-based structural metrics for expert pruning in MoE models through a two-stage process. Our \textbf{initial approach} derived utilization, redundancy, and graph centrality from the co-activation matrix and used them as pruning criteria. Results were limited: structural rankings were poorly correlated with actual expert sensitivity, and the top-ranked candidate caused significant quality degradation. Consulting recent work \citep{zhang2025mone,yang2025pathfinder,mi2026rfidmoe} provided a clear diagnosis: routing statistics capture \emph{when} experts are selected, not \emph{what} they compute or whether they are replaceable.
+We investigated co-activation-based structural metrics for expert pruning in MoE models through a three-stage process. Our \textbf{initial approach} derived utilization, redundancy, and graph centrality from the co-activation matrix and used them as pruning criteria. Results were limited: structural rankings were poorly correlated with actual expert sensitivity, and the top-ranked candidate caused significant quality degradation. Consulting recent work \citep{zhang2025mone,yang2025pathfinder,mi2026rfidmoe} provided a clear diagnosis: routing statistics capture \emph{when} experts are selected, not \emph{what} they compute or whether they are replaceable.
 
 Since our model is small enough to permit it, we conducted exhaustive sensitivity analysis across all 48 experts and 12 layers to establish a reliable ground truth. This revealed that Expert~2 is actively harmful in all layers, a finding invisible to routing-based structural metrics, and that edge layers are disproportionately sensitive. Comparison baselines incorporating weight-space signals outperform the structural approach by 245 PPL, confirming the cost of relying on routing-only signals.
 
@@ -391,7 +385,7 @@ The immediate next step is scaling $C_i$ analysis to larger models to test wheth
 The weights $\alpha=0.3$, $\beta=0.4$, $\gamma=0.3$ reflected a prior that redundancy is the most informative signal. The initial approach's failure shows this prior was wrong: the issue is not the weighting but the fundamental inadequacy of routing-based signals for predicting computational substitutability.
 
 \subsection{Co-activation Matrix Properties}
-$\mathbf{C}$ is symmetric by construction. With top-2 routing, each token contributes exactly one off-diagonal entry per layer, so $\sum_{i \neq j} C_{ij} = 2T$.
+$\mathbf{A}$ is symmetric by construction. With top-2 routing, each token contributes exactly one off-diagonal entry per layer, so $\sum_{i \neq j} A_{ij} = 2T$.
 
 \subsection{Global Expert-2 Pruning}
 Pruning Expert~2 across all 12 layers simultaneously yields perplexity $\approx$518.3 ($-$282 from baseline), confirming the harmful effect compounds across layers.
