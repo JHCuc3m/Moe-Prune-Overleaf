@@ -52,7 +52,7 @@ Our initial proposal focused on hardware-aware expert placement, using co-activa
 We pursued this question in two stages. In our \textbf{initial approach}, we built routing-based structural metrics directly from the co-activation matrix and applied them as pruning criteria. The results were limited: despite intuitively sound reasoning (low-utilization, high-redundancy experts should be safe to remove), the metrics failed to reliably identify valid pruning targets, and the best candidate selected actually caused significant quality degradation. Faced with these results, we consulted recent literature and found that \citet{zhang2025mone}, \citet{yang2025pathfinder}, and \citet{mi2026rfidmoe} provide a clear explanation for why routing-based signals alone are insufficient. \textbf{Guided by these insights}, we redesigned our evaluation around direct sensitivity measurement, which revealed not only the failure mode of our initial method but also an unexpected finding: the existence of experts that actively harm model quality.
 
 \paragraph{Contributions.}
-(1)~We demonstrate that routing-based co-activation structural metrics fail to predict expert pruning impact and explain why through the lens of recent literature. (2)~We reveal the harmful expert phenomenon: Expert~2 degrades quality in all 12 layers of TinyMixtral, a finding only discoverable via behavioral evaluation. (3)~We show that improved baselines incorporating weight-space signals outperform our initial routing-only approach by up to 245 PPL points, motivating hybrid pruning criteria. (4)~We develop contribution magnitude ($C_i$) as a single-pass proxy metric that explains the routing sink phenomenon and identifies prune candidates efficiently; we show the $C_i < 0.1$ threshold generalizes across four calibration domains.
+(1)~We demonstrate that routing-based co-activation structural metrics fail to predict expert pruning impact and explain why through the lens of recent literature. (2)~We reveal the harmful expert phenomenon: Expert~2 degrades quality in all 12 layers of TinyMixtral, a finding only discoverable via behavioral evaluation. (3)~We show that comparison baselines incorporating weight-space signals outperform our structural approach by up to 245 PPL points, with exhaustive sensitivity analysis confirming Expert~2 as the ground truth pruning target. (4)~We develop contribution magnitude ($C_i$) as a single-pass proxy metric that explains the routing sink phenomenon and identifies prune candidates efficiently; we show the $C_i < 0.1$ threshold generalizes across four calibration domains.
 
 %-----------------------------------------------------------------------
 \section{Related Work}
@@ -64,14 +64,14 @@ Sparse top-$k$ gating for language modeling was introduced by \citet{shazeer2017
 Occult \citep{luo2025occult} models expert co-activation frequency to place collaborating experts on the same GPU, reducing cross-device communication. Our initial approach repurposes this co-activation analysis to derive pruning metrics, using the collaboration matrix as input to structural importance scores rather than placement decisions.
 
 \paragraph{Model pruning and compression.}
-\citet{he2024demystifying} proposed a unified compression framework combining expert-level weight pruning, quantization, and structured module removal, establishing that utilization and weight magnitude are the dominant signals in existing work. Our initial approach follows the same paradigm but derives signals from co-activation structure instead of weight properties, an approach whose limitations led us to the improved methods described below.
+\citet{he2024demystifying} proposed a unified compression framework combining expert-level weight pruning, quantization, and structured module removal, establishing that utilization and weight magnitude are the dominant signals in existing work. Our initial approach follows the same paradigm but derives signals from co-activation structure instead of weight properties, an approach whose limitations motivated exhaustive sensitivity analysis and the contribution metrics described below.
 
 \paragraph{Why routing-based signals are insufficient: insights from recent work.}
 After observing the limited results of our initial routing-based approach, we examined three recent papers that directly informed our improved methodology.
 
 \citet{zhang2025mone} propose MoNE, which demonstrates that access frequency alone produces unstable and unreliable pruning results across model architectures and calibration settings. Their key insight is that \emph{output variance}, a behavioral signal, must be considered alongside routing statistics to robustly identify safe pruning targets. This directly explains our initial failure: our utilization and redundancy metrics capture structural position in the routing graph, but not whether removing an expert will actually affect model outputs. Inspired by MoNE, we moved from structural proxies toward direct sensitivity measurement.
 
-\citet{yang2025pathfinder} introduce MoE Pathfinder, showing that reliable pruning requires fusing reconstruction error, routing probability, and activation strength, and that expert importance varies heterogeneously across layers, and uniform layer-wise criteria are consistently suboptimal. This motivated our layer-by-layer sensitivity measurement in the improved approach, rather than applying a global structural criterion uniformly across all 12 layers.
+\citet{yang2025pathfinder} introduce MoE Pathfinder, showing that reliable pruning requires fusing reconstruction error, routing probability, and activation strength, and that expert importance varies heterogeneously across layers, and uniform layer-wise criteria are consistently suboptimal. This motivated our layer-by-layer sensitivity measurement, rather than applying a global structural criterion uniformly across all 12 layers.
 
 RFID-MoE \citep{mi2026rfidmoe} demonstrates that expert utilization in large MoE models is severely skewed and that low-utilization experts may encode high information density as measured by effective rank. This shows that routing frequency is doubly unreliable as a pruning signal: it misses both important low-frequency experts and, as we discover, harmful mid-frequency ones. This reinforced our decision to abandon routing-derived proxies and measure ground-truth sensitivity directly.
 
@@ -131,9 +131,9 @@ To evaluate pruning without modifying weights, we hook the router's forward pass
 
 The structural score identified Layer~0, Expert~1 as the top candidate based on high redundancy (72.3\%) and low utilization (22.3\%). Yet pruning it \emph{increased} perplexity by +89.77. The issue is fundamental: co-activation redundancy measures how often two experts are selected \emph{together}, not whether one's \emph{computation} can substitute for the other's. As \citet{zhang2025mone} show, routing statistics do not capture output behavior. Additionally, applying a uniform global criterion ignores the layer heterogeneity that \citet{yang2025pathfinder} identify as critical.
 
-\subsection{Improved Approach: Sensitivity Analysis}
+\subsection{Exhaustive Sensitivity Analysis: Ground Truth}
 
-Guided by the above insights, we redesigned our approach around direct behavioral measurement.
+To obtain a reliable ground truth for which experts are safe or harmful to prune, we conduct exhaustive per-expert sensitivity analysis. This is feasible here because TinyMixtral has only 48 experts total; on models with hundreds of experts per layer it would be prohibitive. The results serve as the evaluation target against which our contribution metrics are later validated.
 
 \subsubsection{Per-Expert Sensitivity Analysis}
 
@@ -168,12 +168,12 @@ C_i = \frac{1}{N_i} \sum_{x:\, i \in \text{top-}k(x)} \frac{\|G_i(x) \cdot E_i(x
 \end{equation}
 where $G_i(x)$ is the routing gate weight, $E_i(x)$ the expert output before gating, $h_{\text{post}}(x)$ the MoE layer output, and $N_i$ the number of tokens routed to expert $i$. Crucially, $C_i$ is conditioned on selection: an expert that is selected infrequently but always contributes strongly will not be penalized. Only experts that contribute little \emph{when selected} receive a low score.
 
-\paragraph{Signed Contribution ($S_i$).}
+\paragraph{Signed Contribution ($S_i$) and a tested hypothesis.}
 \begin{equation}
 S_i = \frac{1}{N_i} \sum_{x:\, i \in \text{top-}k(x)} \frac{\langle G_i(x) \cdot E_i(x),\; h_{\text{post}}(x) \rangle}{\|h_{\text{post}}(x)\|_2}
 \label{eq:si}
 \end{equation}
-$S_i$ captures directional alignment with the layer output. We originally hypothesized that harmful experts would show negative $S_i$ (opposing the output direction); in practice Expert~2's $S_i$ is small but positive, meaning it is a zero-contributor rather than an active adversary. $C_i$ magnitude is the more discriminative signal.
+$S_i$ captures directional alignment with the layer output. Knowing that Expert~2 is harmful (negative sensitivity), our initial hypothesis was that harmful experts are \emph{adversarial}: their outputs actively oppose the residual stream, producing negative $S_i$. This would have implied a clear sign-based pruning rule. We test this hypothesis in Section~\ref{sec:contrib_results}.
 
 \paragraph{Routing sink criterion.}
 An expert with $C_i < 0.1$ is a \emph{routing sink}: the router spends one of its top-$k$ slots on this expert, but the expert's gated output is negligible relative to the residual stream. Masking such an expert forces the router to reallocate those tokens to contributing experts, which improves model quality.
@@ -213,12 +213,12 @@ Expert 0 & 37 \textit{(keep)}       & 0.012 & +188.2 \textit{(critical)} \\
 \end{tabular}
 \end{table}
 
-\subsection{Improved Approach Results: Sensitivity Analysis}
+\subsection{Sensitivity Analysis: Ground Truth Results}
 
 Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensitivity across all 48 experts and 12 layers, providing a complete behavioral picture unavailable from routing analysis alone.
 
 \begin{table}[t]
-\caption{Improved approach: per-expert sensitivity (PPL increase when disabled). Negative = removal \emph{improves} quality. \textbf{Bold} = most sensitive expert per layer.}
+\caption{Ground truth sensitivity: PPL increase when each expert is disabled. Negative = removal \emph{improves} quality. \textbf{Bold} = most sensitive expert per layer.}
 \label{tab:sensitivity}
 \centering
 \small
@@ -245,16 +245,16 @@ Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert sensiti
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.7\linewidth]{plots/sensitivity_heatmap.png}
-\caption{Improved approach: sensitivity heatmap. Red = critical experts; blue = harmful experts. Expert~2's consistent blue column across all 12 layers is the key finding, entirely missed by the initial routing-based analysis.}
+\caption{Ground truth sensitivity heatmap. Red = critical experts; blue = harmful experts. Expert~2's consistent blue column across all 12 layers is entirely missed by the structural metrics.}
 \label{fig:heatmap}
 \end{figure}
 
 \subsection{Pruning Baseline Comparison}
 
-Table~\ref{tab:baselines} compares all methods at Layer~0. The improved baselines, which go beyond routing structure, successfully identify the harmful Expert~2, while the initial structural approach does not.
+Table~\ref{tab:baselines} compares all methods at Layer~0 against the sensitivity oracle as ground truth. Both comparison baselines, which use signals beyond routing structure, happen to identify Expert~2, while our structural approach does not.
 
 \begin{table}[t]
-\caption{Pruning strategy comparison for Layer~0. Negative $\Delta$PPL = improvement over baseline (800.38). \textit{Initial} methods use routing-only signals; \textit{improved} methods incorporate additional signals.}
+\caption{Pruning strategy comparison for Layer~0. Negative $\Delta$PPL = improvement over baseline (800.38). Sensitivity oracle is the exhaustive ground truth; baselines use alternative signals for comparison.}
 \label{tab:baselines}
 \centering
 \small
@@ -263,11 +263,11 @@ Table~\ref{tab:baselines} compares all methods at Layer~0. The improved baseline
 \textbf{Method} & \textbf{Expert Removed} & \textbf{PPL} & \textbf{$\Delta$PPL} \\
 \midrule
 No pruning (baseline)                  & {--}     & 800.38          & 0.0       \\
-\textit{Initial:} Structural score     & Expert 1 & 890.15          & +89.8     \\
-\textit{Initial:} Random (avg.)        & random   & $\sim$865       & $\sim$+65 \\
-\textit{Improved:} Utilization-based   & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
-\textit{Improved:} Magnitude-based     & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
-\textit{Improved:} Sensitivity oracle  & Expert 2 & 644.68          & $-$155.7  \\
+Structural score (ours)        & Expert 1 & 890.15          & +89.8     \\
+Random (avg.)                  & random   & $\sim$865       & $\sim$+65 \\
+Utilization-based (baseline)   & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
+Magnitude-based (baseline)     & Expert 2 & \textbf{644.68} & \textbf{$-$155.7} \\
+Sensitivity oracle (ground truth) & Expert 2 & 644.68       & $-$155.7  \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -306,8 +306,8 @@ Table~\ref{tab:ci} shows $C_i$ for all 48 experts measured on 128 WikiText-2 cal
 
 These results explain the mechanism behind Finding~1: Expert~2 receives 15K--37K routing decisions per layer (comparable to or exceeding other experts), yet its gated output $G_i \cdot E_i$ is negligible relative to the residual stream. Masking Expert~2 forces those tokens to Experts~0, 1, and~3, which actually contribute, thereby improving model quality. The routing sink is not an actively harmful computation but a parasitic consumer of routing capacity.
 
-\paragraph{Signed contribution.}
-Expert~2's $S_i$ is 0.003--0.55 across layers (other experts: 23--315). The small positive values confirm Expert~2 does not actively oppose the output direction; it simply contributes almost nothing. The $C_i$ magnitude criterion is therefore sufficient to flag it as a prune candidate; the sign of $S_i$ is not required.
+\paragraph{Testing the adversarial hypothesis via $S_i$.}
+Our hypothesis was that Expert~2 would show negative $S_i$, actively opposing the residual stream. The data falsifies this: Expert~2's $S_i$ is 0.003--0.55 across layers (other experts: 23--315). Expert~2 is not an adversary---it is a ghost. Its outputs are small but positively aligned; it simply contributes almost nothing when selected. This distinction matters conceptually: the router is not being misled into selecting a destructive expert, it is wasting a routing slot on a near-inert one. The $C_i$ magnitude criterion captures this; a sign-based $S_i$ rule would not have detected Expert~2 at all.
 
 \paragraph{Domain generalization.}
 A practical pruning criterion must be robust to calibration data choice. Table~\ref{tab:domain} shows per-expert average $C_i$ across four domains. Expert~2's average $C_i$ is 0.020--0.032 in all domains, while all other experts exceed 0.51. The $C_i < 0.1$ threshold identifies Expert~2 as a routing sink regardless of calibration domain, confirming this is a property of the model's weights rather than a data artifact.
@@ -343,8 +343,8 @@ Structural rankings are poorly correlated with ground-truth sensitivity across a
 \paragraph{Finding 4: Redundancy $\neq$ replaceability.}
 Expert~1's 72.3\% co-activation redundancy did not translate to safe removal. Co-activation captures routing \emph{correlation}, not computational \emph{substitutability}, which is the core flawed assumption of the initial approach.
 
-\paragraph{Finding 5: Improved baselines outperform the initial structural approach by 245 PPL.}
-Both utilization-based and magnitude-based pruning, which incorporate signals beyond routing structure, identified Expert~2 and achieved $-155.7$ PPL. The initial structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
+\paragraph{Finding 5: Comparison baselines outperform the structural approach by 245 PPL.}
+Both utilization-based and magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the sensitivity oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
 \paragraph{Finding 6: Expert 2 is a routing sink---selected but contributing negligibly.}
 $C_i$ reveals the mechanism underlying Finding~1: Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$), yet it receives routing decisions at normal frequency. Pruning it removes a parasitic slot-consumer, not a functional expert, and forces the router to reallocate those slots to actually contributing experts. This reallocation is what drives the $-155.7$ PPL improvement.
@@ -357,7 +357,7 @@ Measured on WikiText-2, code (CodeParrot), math (GSM8K), and scientific text (Pu
 
 We investigated co-activation-based structural metrics for expert pruning in MoE models through a two-stage process. Our \textbf{initial approach} derived utilization, redundancy, and graph centrality from the co-activation matrix and used them as pruning criteria. Results were limited: structural rankings were poorly correlated with actual expert sensitivity, and the top-ranked candidate caused significant quality degradation. Consulting recent work \citep{zhang2025mone,yang2025pathfinder,mi2026rfidmoe} provided a clear diagnosis: routing statistics capture \emph{when} experts are selected, not \emph{what} they compute or whether they are replaceable.
 
-Our \textbf{improved approach}, guided by these insights, conducted direct sensitivity analysis across all 48 experts and 12 layers. This revealed that Expert~2 is actively harmful in all layers, a finding invisible to routing-based analysis, and that edge layers are disproportionately sensitive. Improved baselines incorporating weight-space signals outperform the initial structural approach by 245 PPL, confirming the value of going beyond routing statistics.
+Since our model is small enough to permit it, we conducted exhaustive sensitivity analysis across all 48 experts and 12 layers to establish a reliable ground truth. This revealed that Expert~2 is actively harmful in all layers, a finding invisible to routing-based structural metrics, and that edge layers are disproportionately sensitive. Comparison baselines incorporating weight-space signals outperform the structural approach by 245 PPL, confirming the cost of relying on routing-only signals.
 
 To explain \textbf{why} Expert~2 is harmful and enable efficient detection without exhaustive sensitivity sweeps, we introduced contribution magnitude ($C_i$), which measures each expert's fractional share of the MoE output in a single forward pass. $C_i$ identifies Expert~2 as a routing sink---selected at normal frequency but contributing 30--150$\times$ less than other experts---and the $C_i < 0.1$ threshold is robust across four calibration domains (text, code, math, scientific), confirming that routing sinks are an intrinsic model property rather than a data artifact.
 
