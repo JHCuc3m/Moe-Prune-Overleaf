@@ -189,7 +189,7 @@ All code is available at \url{https://github.com/JHCuc3m/MoE-Place}, using Huggi
 
 \paragraph{Model.} TinyMixtral-4x248M-MoE \citep{isotonic2024}: 12 layers, 4 experts per layer (48 total), top-2 routing, $\sim$1B parameters.
 
-\paragraph{Data.} WikiText-2 \citep{merity2017pointer}: 128 training samples (19,903 tokens) for calibration; full test split (663,040 tokens) for perplexity evaluation.
+\paragraph{Data.} WikiText-2 \citep{merity2017pointer} is used throughout for calibration (128 training samples, 19,903 tokens) and perplexity evaluation (full test split, 663,040 tokens). Sensitivity analysis and expert selection are performed on WikiText-2. To test whether the identified routing sink generalizes beyond the calibration domain, we additionally compute $C_i$ on three out-of-distribution corpora: code (CodeParrot), math (GSM8K), and scientific text (PubMed), reported in Section~\ref{sec:contrib_results}.
 
 \paragraph{Hardware.} NVIDIA H100 80GB GPUs via Georgia Tech PACE cluster, PyTorch 2.6, CUDA 12.4.
 
@@ -203,6 +203,28 @@ Baseline (unpruned) perplexity: 800.38. The structural score selected Expert~1 f
 \caption{Structural score vs.\ ground truth sensitivity for all 48 experts (12 layers $\times$ 4 experts). No correlation is visible. Expert~2 (red stars) is harmful in every layer yet spans the full range of structural scores, confirming the metric cannot detect routing sinks.}
 \label{fig:structural_scatter}
 \end{figure}
+
+Table~\ref{tab:ablation} quantifies this failure across all individual metrics and their combination. All three individual metrics achieve only 16.7\% top-1 agreement (random chance with 4 experts = 25\%). Redundancy is actively inverted: its negative Spearman $\rho$ means high redundancy predicts \emph{important} experts rather than safe-to-prune ones, the opposite of our assumption. Most strikingly, combining all three metrics into the structural score makes things worse, dropping to 8.3\% top-1 agreement. The failure is not a weighting problem; it is fundamental to using routing structure as a proxy for output contribution.
+
+\begin{table}[t]
+\caption{Ablation of structural metrics against sensitivity ground truth (all 48 experts, 12 layers). Top-1 agreement: fraction of layers where the top-ranked prune candidate matches the ground truth. Random baseline = 25\%. Spearman $\rho$: rank correlation with sensitivity.}
+\label{tab:ablation}
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Metric} & \textbf{Top-1 Agreement} & \textbf{Spearman $\rho$} & \textbf{Verdict} \\
+\midrule
+Utilization           & 16.7\% & $+$0.18 & Fails \\
+Redundancy            & 16.7\% & $-$0.35 & \textit{Inverted} \\
+Centrality            & 16.7\% & $+$0.23 & Fails \\
+\midrule
+Structural Score (combined) & \textbf{8.3\%} & $-$0.03 & \textbf{Worst} \\
+\midrule
+Random baseline       & 25.0\% & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Sensitivity Analysis: Ground Truth Results}
 
