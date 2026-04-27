@@ -138,7 +138,7 @@ To obtain a reliable ground truth for which experts are safe or harmful to prune
 \subsubsection{Per-Expert Ablation Score}
 
 \begin{equation}
-\text{AblationScore}_{l,e} = \text{PPL}(\text{model with expert } e \text{ disabled in layer } l) - \text{PPL}(\text{baseline})
+\text{Sensitivity}_{l,e} = \text{AblationScore}_{l,e} = \text{PPL}(\text{model with expert } e \text{ disabled in layer } l) - \text{PPL}(\text{baseline})
 \label{eq:sensitivity}
 \end{equation}
 Positive: expert is important (removal hurts). Negative: expert is \emph{harmful} (removal helps). We evaluate all 48 experts across all 12 layers, yielding a complete behavioral ground-truth map.
@@ -225,7 +225,7 @@ Structural Score (combined) & \textbf{8.3\%} & $-$0.03 & \textbf{Worst} \\
 
 \subsection{Expert Ablation: Ground Truth Results}
 
-Table~\ref{tab:sensitivity} and Figure~\ref{fig:heatmap} show per-expert ablation scores across all 48 experts and 12 layers, providing a complete behavioral picture that routing analysis alone cannot provide.
+Figure~\ref{fig:heatmap} show per-expert ablation scores across all 48 experts and 12 layers, providing a complete behavioral picture that routing analysis alone cannot provide.
 
 \begin{figure}[t]
 \centering
