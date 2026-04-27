@@ -349,6 +349,34 @@ Magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching 
 \paragraph{Finding 5: Expert 2 is a routing sink, and $C_i < 0.1$ is a domain-independent criterion validated by sensitivity ground truth.}
 Expert~2's gated output magnitude is 30--150$\times$ smaller than other experts ($C_i < 0.07$ vs.\ $0.56$--$0.96$) in every layer and every calibration domain. Per-domain sensitivity analysis confirms Expert~2 is genuinely harmful in all four domains: $C_i$ rank correlates significantly with sensitivity ground truth ($\rho = 0.43$--$0.76$, $p \leq 0.01$) and achieves 67--100\% top-1 pruning agreement across domains. The routing sink is an intrinsic property of the model's weights: $C_i < 0.1$ identifies it regardless of calibration domain, and that identification corresponds to real performance degradation.
 
+\paragraph{Finding 6: The routing sink phenomenon and $C_i$ signal generalise robustly across domains.}
+Table~\ref{tab:domain_generalization} presents the complete cross-domain generalisation picture, combining the $C_i$ gap with sensitivity ground truth across all four domains. Three observations stand out.
+
+\textbf{(i) The $C_i$ gap is an order-of-magnitude anomaly, not a marginal difference.} Expert~2's $C_i$ is 24--30$\times$ smaller than the average of all other experts in every domain (mean ratio: 27.3$\times$). This gap is far above any threshold ambiguity and is consistent regardless of whether the calibration data is natural language, code, mathematics, or scientific text.
+
+\textbf{(ii) Low $C_i$ corresponds to genuine harm, not a structural artefact.} Expert~2 has negative sensitivity in all four domains, confirming that routing sinks waste routing capacity that would otherwise go to contributing experts. The harm magnitude is domain-dependent: WikiText-2 shows the largest relative improvement ($-17.8\%$ PPL) when Expert~2 is masked, while code, math, and scientific text cluster at $-5.3$--$8.0\%$. This variation suggests that Expert~2's routing failure has a proportionally smaller impact on out-of-distribution token distributions, but the direction of effect---masking improves quality---is invariant.
+
+\textbf{(iii) $C_i$ rank ordering predicts sensitivity, not just the worst expert.} Spearman rank correlations between $C_i$ and per-expert sensitivity are significant in every domain ($\rho = 0.43$--$0.76$, $p \leq 0.01$, mean $\rho = 0.62$), meaning $C_i$ captures the relative importance ordering of all experts, not merely flags the most extreme outlier. The code domain is the sole case where top-1 agreement falls below 90\% (67\%, 8/12 layers): in four layers domain-specific routing patterns make another expert marginally more harmful than Expert~2, indicating that at the margin, domain shift can perturb the identity of the worst expert even while $C_i < 0.1$ remains a reliable pruning signal overall.
+
+\begin{table}[t]
+\caption{Cross-domain generalisation: $C_i$ gap and sensitivity ground truth. \emph{Others avg $C_i$} is the mean over Experts~0, 1, 3. \emph{Ratio} is others/Expert~2. E2~$\Delta$PPL is Expert~2's sensitivity normalised by domain baseline perplexity. All Spearman correlations are statistically significant ($^\dagger p<0.01$; $^{*}p<0.001$).}
+\label{tab:domain_generalization}
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Domain} & \textbf{E2 $C_i$} & \textbf{Others avg $C_i$} & \textbf{Ratio} & \textbf{E2 $\Delta$PPL} & \textbf{Spearman $\rho$} & \textbf{Top-1} \\
+\midrule
+WikiText-2 & 0.020 & 0.475 & $23.8\times$ & $-17.8\%$ & $0.43^\dagger$ & 100\% \\
+Code       & 0.012 & 0.357 & $30.0\times$ & $-5.3\%$  & $0.68^{*}$    &  67\% \\
+Math       & 0.015 & 0.374 & $25.3\times$ & $-8.0\%$  & $0.62^{*}$    & 100\% \\
+Scientific & 0.012 & 0.359 & $29.9\times$ & $-5.8\%$  & $0.76^{*}$    &  92\% \\
+\midrule
+\textit{Mean} & 0.015 & 0.391 & $27.3\times$ & $-9.2\%$ & 0.62 & 90\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 %-----------------------------------------------------------------------
 \section{Conclusion}
 
