@@ -131,14 +131,14 @@ To evaluate pruning without modifying weights, we hook the router's forward pass
 
 The structural score identified Layer~0, Expert~1 as the top candidate based on high redundancy (72.3\%) and low utilization (22.3\%). Yet pruning it \emph{increased} perplexity by +89.77. The issue is fundamental: co-activation redundancy measures how often two experts are selected \emph{together}, not whether one's \emph{computation} can substitute for the other's. As \citet{zhang2025mone} show, routing statistics do not capture output behavior. Additionally, applying a uniform global criterion ignores the layer heterogeneity that \citet{yang2025pathfinder} identify as critical.
 
-\subsection{Exhaustive Sensitivity Analysis: Ground Truth}
+\subsection{Exhaustive Expert Ablation: Ground Truth}
 
 To obtain a reliable ground truth for which experts are safe or harmful to prune, we conduct exhaustive expert ablation. This is feasible here because TinyMixtral has only 48 experts total; on models with hundreds of experts per layer it would be prohibitive. The results serve as the evaluation target against which our contribution metrics are later validated.
 
-\subsubsection{Per-Expert Sensitivity Analysis}
+\subsubsection{Per-Expert Ablation Score}
 
 \begin{equation}
-\text{Sensitivity}_{l,e} = \text{PPL}(\text{model with expert } e \text{ disabled in layer } l) - \text{PPL}(\text{baseline})
+\text{AblationScore}_{l,e} = \text{PPL}(\text{model with expert } e \text{ disabled in layer } l) - \text{PPL}(\text{baseline})
 \label{eq:sensitivity}
 \end{equation}
 Positive: expert is important (removal hurts). Negative: expert is \emph{harmful} (removal helps). We evaluate all 48 experts across all 12 layers, yielding a complete behavioral ground-truth map.
