@@ -133,7 +133,7 @@ The structural score identified Layer~0, Expert~1 as the top candidate based on 
 
 \subsection{Exhaustive Expert Ablation: Ground Truth}
 
-To obtain a reliable ground truth for which experts are safe or harmful to prune, we conduct exhaustive expert ablation. This is feasible here because TinyMixtral has only 48 experts total; on models with hundreds of experts per layer it would be prohibitive. The results serve as the evaluation target against which our contribution metrics are later validated.
+We conduct exhaustive expert ablation to establish ground truth (feasible with 48 total experts, but prohibitive at scale) against which our contribution metrics are validated.
 
 \subsubsection{Per-Expert Ablation Score}
 
@@ -165,7 +165,7 @@ For each token $x$ where expert $i$ is in the top-$k$, we compute the ratio of t
 C_i = \frac{1}{N_i} \sum_{x:\, i \in \text{top-}k(x)} \frac{\|G_i(x) \cdot E_i(x)\|_2}{\|h_{\text{post}}(x)\|_2}
 \label{eq:ci}
 \end{equation}
-where $G_i(x)$ is the routing gate weight, $E_i(x)$ the expert output before gating, $h_{\text{post}}(x)$ the MoE layer output, and $N_i$ the number of tokens routed to expert $i$. Crucially, $C_i$ is conditioned on selection: an expert that is selected infrequently but always contributes strongly will not be penalized. Only experts that contribute little \emph{when selected} receive a low score.
+where $G_i(x)$ is the routing gate weight, $E_i(x)$ the expert output before gating, $h_{\text{post}}(x)$ the MoE layer output, and $N_i$ the number of tokens routed to expert $i$. Crucially, $C_i$ is conditioned on selection: an expert that is selected infrequently but always contributes strongly will not be penalized.
 
 \paragraph{Signed Contribution ($S_i$) and a tested hypothesis.}
 \begin{equation}
