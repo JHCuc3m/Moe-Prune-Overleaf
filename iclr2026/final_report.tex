@@ -327,7 +327,7 @@ Structural rankings are poorly correlated with ground-truth ablation scores acro
 Magnitude-based pruning identified Expert~2 and achieved $-155.7$ PPL, matching the expert ablation oracle. Our structural approach caused +89.8 PPL. The 245-PPL gap demonstrates the cost of relying on routing-only signals.
 
 \paragraph{Finding 5: $C_i < 0.1$ is a domain-independent routing sink criterion, confirmed by expert ablation.}
-Table~\ref{tab:domain_generalization} shows the cross-domain picture. Expert~2's $C_i$ is 24--30$\times$ below the average of all other experts in every domain (mean ratio: 27.3$\times$), placing it unambiguously below the 0.1 threshold regardless of calibration data. Per-domain expert ablation confirms this is not a structural artefact: Expert~2 is harmful in all four domains and in every layer, with masking yielding $-5.3$ to $-17.8\%$ PPL improvement. $C_i$ rank correlates significantly with ablation scores in every domain ($\rho = 0.43$--$0.76$, $p \leq 0.01$, 67--100\% top-1 agreement), capturing the full expert ordering rather than just the worst outlier. The code domain is the sole exception (67\%, 8/12 layers), where domain-specific routing makes another expert marginally more harmful in four layers. All results use perplexity; downstream task evaluation for code and math is left to future work (see Limitations).
+Table~\ref{tab:domain_generalization} shows the cross-domain picture. Expert~2's $C_i$ is 24--30$\times$ below the average of all other experts in every domain (mean ratio: 27.3$\times$), placing it unambiguously below the 0.1 threshold regardless of calibration data. Per-domain expert ablation confirms Expert~2 is harmful in all four domains and in every layer, with masking yielding $-5.3$ to $-17.8\%$ PPL improvement. $C_i$ rank correlates significantly with ablation scores in every domain ($\rho = 0.43$--$0.76$, $p \leq 0.01$, 67--100\% top-1 agreement), capturing the full expert ordering rather than just the worst outlier. The code domain is the sole exception (67\%, 8/12 layers), where domain-specific routing makes another expert marginally more harmful in four layers. All results use perplexity; downstream task evaluation for code and math is left to future work (see Limitations).
 
 \begin{table}[t]
 \caption{Cross-domain generalisation: $C_i$ gap and expert ablation ground truth. \emph{Others avg $C_i$} is the mean over Experts~0, 1, 3. \emph{Ratio} is others/Expert~2. E2~$\Delta$PPL is Expert~2's ablation score normalised by domain baseline perplexity. All Spearman correlations are statistically significant ($^\dagger p<0.01$; $^{*}p<0.001$).}
@@ -351,7 +351,7 @@ Scientific & 0.012 & 0.359 & $29.9\times$ & $-5.8\%$  & $0.76^{*}$    &  92\% \\
 %-----------------------------------------------------------------------
 \section{Conclusion}
 
-Routing-based co-activation structural metrics fail to predict expert pruning impact: structural rankings are poorly correlated with ground truth, and combining metrics makes things worse (8.3\% top-1 agreement vs.\ 25\% random). Exhaustive expert ablation reveals that Expert~2 is actively harmful in all 12 layers---a finding invisible to structural signals---and that edge layers are disproportionately sensitive, confirming the layer heterogeneity that \citet{zhang2025mone,yang2025pathfinder,mi2026rfidmoe} each identify as critical.
+Routing-based co-activation structural metrics fail to predict expert pruning impact: structural rankings are poorly correlated with ground truth, and combining metrics makes things worse (8.3\% top-1 agreement vs.\ 25\% random). Exhaustive expert ablation reveals that Expert~2 is actively harmful in all 12 layers---a finding invisible to structural signals.
 
 To explain \textbf{why} Expert~2 is harmful and enable efficient detection without exhaustive expert ablation sweeps, we introduced contribution magnitude ($C_i$), which measures each expert's fractional share of the MoE output in a single forward pass. $C_i$ identifies Expert~2 as a routing sink---selected at normal frequency but contributing 30--150$\times$ less than other experts---and the $C_i < 0.1$ threshold is robust across four calibration domains (text, code, math, scientific)---confirmed by per-domain expert ablation ($\rho = 0.43$--$0.76$, 67--100\% top-1 pruning agreement)---confirming that routing sinks are an intrinsic model property rather than a data artifact.
 
@@ -366,17 +366,5 @@ The immediate next step is scaling $C_i$ analysis to larger models to test wheth
 %-----------------------------------------------------------------------
 \bibliography{final_references}
 \bibliographystyle{iclr2026_conference}
-
-\appendix
-\section{Additional Details}
-
-\subsection{Structural Score Weights}
-The weights $\alpha=0.3$, $\beta=0.4$, $\gamma=0.3$ reflected a prior that redundancy is the most informative signal. The initial approach's failure shows this prior was wrong: the issue is not the weighting but the fundamental inadequacy of routing-based signals for predicting computational substitutability.
-
-\subsection{Co-activation Matrix Properties}
-$\mathbf{A}$ is symmetric by construction. With top-2 routing, each token contributes exactly one off-diagonal entry per layer, so $\sum_{i \neq j} A_{ij} = 2T$.
-
-\subsection{Global Expert-2 Pruning}
-Pruning Expert~2 across all 12 layers simultaneously yields perplexity $\approx$518.3 ($-$282 from baseline), confirming the harmful effect compounds across layers.
 
 \end{document}
